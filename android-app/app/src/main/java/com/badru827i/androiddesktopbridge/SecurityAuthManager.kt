@@ -5,6 +5,7 @@ import android.content.Context
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
+import android.os.CancellationSignal
 import java.util.concurrent.Executor
 
 /**
@@ -25,13 +26,9 @@ class SecurityAuthManager(private val context: Context) {
         onFailure: (CharSequence) -> Unit
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            // Basic app can still require the device lock screen before use.
             val keyguard = context.getSystemService(KeyguardManager::class.java)
-            if (keyguard?.isDeviceSecure == true) {
-                onSuccess()
-            } else {
-                onFailure("No secure device credential is configured")
-            }
+            if (keyguard?.isDeviceSecure == true) onSuccess()
+            else onFailure("No secure device credential is configured")
             return
         }
 
@@ -75,18 +72,22 @@ class SecurityAuthManager(private val context: Context) {
         }
 
         val prompt = builder.build()
-        prompt.authenticate(executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                onSuccess()
-            }
+        prompt.authenticate(
+            null as CancellationSignal?,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onSuccess()
+                }
 
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                onFailure(errString)
-            }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    onFailure(errString)
+                }
 
-            override fun onAuthenticationFailed() {
-                onFailure("Authentication failed")
+                override fun onAuthenticationFailed() {
+                    onFailure("Authentication failed")
+                }
             }
-        })
+        )
     }
 }
