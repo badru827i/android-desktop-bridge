@@ -19,7 +19,7 @@ import android.view.Surface
 import androidx.core.app.ServiceCompat
 import java.nio.ByteBuffer
 
-/** MediaProjection capture service for the desktop bridge. */
+/** MediaProjection capture service with an ADB-reversed TCP video path. */
 class MediaProjectionCaptureService : Service() {
     companion object {
         const val ACTION_START = "com.badru827i.androiddesktopbridge.action.START_CAPTURE"
@@ -31,7 +31,6 @@ class MediaProjectionCaptureService : Service() {
         const val EXTRA_FPS = "fps"
         const val EXTRA_BITRATE = "bitrate"
         const val EXTRA_PREFERRED_CODEC = "preferred_codec"
-
         private const val CHANNEL_ID = "projection"
         private const val NOTIFICATION_ID = 1101
         private const val TAG = "ADBridgeProjection"
@@ -49,9 +48,7 @@ class MediaProjectionCaptureService : Service() {
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
     private var inputSurface: Surface? = null
     private var encoder: H264Encoder? = null
-    private var selectedCodec: VideoCodecProfile? = null
-    private var totalEncodedBytes = 0L
-    private var totalFrames = 0L
+    private var sender: TcpAdbvSender? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -68,7 +65,6 @@ class MediaProjectionCaptureService : Service() {
 
     private fun startCapture(intent: Intent) {
         stopCapture()
-
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
         val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
         if (resultCode < 0 || resultData == null) {
@@ -82,48 +78,50 @@ class MediaProjectionCaptureService : Service() {
             height = intent.getIntExtra(EXTRA_HEIGHT, 720),
             fps = intent.getIntExtra(EXTRA_FPS, 30),
             bitrate = intent.getIntExtra(EXTRA_BITRATE, 4_000_000),
-            preferredCodec = intent.getStringExtra(EXTRA_PREFERRED_CODEC)
-                ?.let { value -> VideoCodecProfile.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
+            preferredCodec = VideoCodecProfile.H264
         )
 
         startAsForeground()
-
         try {
             val manager = getSystemService(MediaProjectionManager::class.java)
             projection = manager.getMediaProjection(resultCode, resultData)
             projection?.registerCallback(projectionCallback, projectionCallbackHandler)
-
-            selectedCodec = VideoCodecSelector.select(
-                width = config.width,
-                height = config.height,
-                fps = config.fps,
-                preferred = config.preferredCodec
-            )
-
-            Log.i(TAG, "Selected codec: ${selectedCodec!!.name} (${selectedCodec!!.mimeType}), hardwareAvailable=${VideoCodecSelector.hardwareAvailable(selectedCodec!!)}")
+            sender = TcpAdbvSender()
 
             encoder = H264Encoder(config, object : H264Encoder.Listener {
                 override fun onOutputFormat(format: MediaFormat) {
-                    Log.i(TAG, "Encoder output format: $format codec=${selectedCodec?.name}")
+                    Log.i(TAG, "Encoder output format: $format codec=H264")
                 }
 
                 override fun onEncodedData(data: ByteBuffer, info: MediaCodec.BufferInfo) {
-                    totalEncodedBytes += info.size
-                    if ((info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                        Log.d(TAG, "Key frame: ${info.size} bytes codec=${selectedCodec?.name}")
+                    if (info.size <= 0) return
+                    val flags = when {
+                        (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0 -> AdbvPacket.FLAG_CONFIG
+                        (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0 -> AdbvPacket.FLAG_KEYFRAME
+                        else -> 0
                     }
-                    totalFrames++
+                    sender?.offer(
+                        flags = flags,
+                        timestampUs = info.presentationTimeUs,
+                        width = config.width,
+                        height = config.height,
+                        fps = config.fps,
+                        codecId = 1,
+                        data = data,
+                        offset = info.offset,
+                        size = info.size
+                    )
                 }
 
                 override fun onEncoderError(error: Exception) {
                     Log.e(TAG, "Encoder error", error)
                     stopCapture()
                 }
-            }, selectedCodec!!)
+            }, VideoCodecProfile.H264)
 
             inputSurface = encoder!!.start()
             virtualDisplay = projection!!.createVirtualDisplay(
-                "AndroidDesktopBridge-720p",
+                "AndroidDesktopBridge-USB-Mirror",
                 config.width,
                 config.height,
                 resources.displayMetrics.densityDpi,
@@ -132,7 +130,7 @@ class MediaProjectionCaptureService : Service() {
                 null,
                 null
             )
-            Log.i(TAG, "Capture started: ${config.width}x${config.height}@${config.fps}, ${config.bitrate}bps, codec=${selectedCodec!!.name}")
+            Log.i(TAG, "Capture started: ${config.width}x${config.height}@${config.fps}, ADBV TCP 27183")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start capture", e)
             stopCapture()
@@ -142,12 +140,7 @@ class MediaProjectionCaptureService : Service() {
     private fun startAsForeground() {
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= 29) {
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -159,42 +152,39 @@ class MediaProjectionCaptureService : Service() {
         runCatching { encoder?.stop() }
         encoder = null
         inputSurface = null
+        sender?.close()
+        sender = null
         runCatching { projection?.unregisterCallback(projectionCallback) }
         runCatching { projection?.stop() }
         projection = null
-        selectedCodec = null
-        totalEncodedBytes = 0
-        totalFrames = 0
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Desktop Bridge capture", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
 
-    private fun buildNotification(): Notification =
-        if (Build.VERSION.SDK_INT >= 26) {
-            Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_upload)
-                .setContentTitle("Android Desktop Bridge")
-                .setContentText("Screen capture active • adaptive video codec")
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setSmallIcon(android.R.drawable.stat_sys_upload)
-                .setContentTitle("Android Desktop Bridge")
-                .setContentText("Screen capture active • adaptive video codec")
-                .setOngoing(true)
-                .build()
-        }
+    private fun buildNotification(): Notification = if (Build.VERSION.SDK_INT >= 26) {
+        Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentTitle("Android Desktop Bridge")
+            .setContentText("USB mirror active • H.264 ADBV")
+            .setOngoing(true)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        Notification.Builder(this)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentTitle("Android Desktop Bridge")
+            .setContentText("USB mirror active • H.264 ADBV")
+            .setOngoing(true)
+            .build()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
