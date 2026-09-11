@@ -8,13 +8,11 @@ import android.view.Surface
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Surface-input H.264 encoder. Encoded access units are exposed to the
- * transport layer through [Listener]; this class does not perform USB I/O.
- */
+/** Surface-input encoder that uses the codec selected at runtime. */
 class H264Encoder(
     private val config: ProjectionConfig,
-    private val listener: Listener
+    private val listener: Listener,
+    private val codecProfile: VideoCodecProfile = VideoCodecProfile.H264
 ) {
     interface Listener {
         fun onOutputFormat(format: MediaFormat)
@@ -29,8 +27,8 @@ class H264Encoder(
     fun start(): Surface {
         check(!running.get()) { "Encoder already running" }
 
-        val codecName = findH264Encoder(config.width, config.height, config.fps)
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, config.width, config.height).apply {
+        val codecName = findEncoder(codecProfile, config.width, config.height, config.fps)
+        val format = MediaFormat.createVideoFormat(codecProfile.mimeType, config.width, config.height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, config.bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, config.fps)
@@ -91,24 +89,24 @@ class H264Encoder(
         }
     }
 
-    private fun findH264Encoder(width: Int, height: Int, fps: Int): String {
+    private fun findEncoder(profile: VideoCodecProfile, width: Int, height: Int, fps: Int): String {
         val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
         val candidates = list.codecInfos
             .asSequence()
-            .filter { it.isEncoder }
-            .filter { info ->
-                info.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_AVC, ignoreCase = true) }
-            }
+            .filter { it.isEncoder && !it.isAlias }
+            .filter { info -> info.supportedTypes.any { it.equals(profile.mimeType, ignoreCase = true) } }
             .sortedWith(compareByDescending<MediaCodecInfo> { !it.isSoftwareOnly })
 
         for (info in candidates) {
-            val type = info.supportedTypes.first { it.equals(MediaFormat.MIMETYPE_VIDEO_AVC, ignoreCase = true) }
-            val caps = info.getCapabilitiesForType(type)
+            val type = info.supportedTypes.first { it.equals(profile.mimeType, ignoreCase = true) }
+            val caps = runCatching { info.getCapabilitiesForType(type) }.getOrNull() ?: continue
             val video = caps.videoCapabilities ?: continue
-            if (video.isSizeSupported(width, height) && video.getSupportedFrameRatesFor(width, height).contains(fps.toDouble())) {
+            if (video.isSizeSupported(width, height) &&
+                runCatching { video.getSupportedFrameRatesFor(width, height).contains(fps.toDouble()) }.getOrDefault(false)
+            ) {
                 return info.name
             }
         }
-        error("No H.264 encoder supports ${width}x${height}@${fps}fps on this device")
+        error("No ${profile.name} encoder supports ${width}x${height}@${fps}fps on this device")
     }
 }
