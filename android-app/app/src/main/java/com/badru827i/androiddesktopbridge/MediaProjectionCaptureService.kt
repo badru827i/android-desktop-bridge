@@ -18,10 +18,10 @@ import androidx.core.app.ServiceCompat
 import java.nio.ByteBuffer
 
 /**
- * Real MediaProjection -> VirtualDisplay -> H.264 pipeline.
+ * MediaProjection -> VirtualDisplay -> runtime-selected video encoder.
  *
- * The encoded stream is intentionally exposed as callbacks instead of being
- * coupled to USB. V1.2 can attach a USB transport without changing capture.
+ * Codec selection is capability-driven; the selected codec is exposed to the
+ * transport layer so ADBV packets can carry the correct codec ID.
  */
 class MediaProjectionCaptureService : Service() {
     companion object {
@@ -33,6 +33,7 @@ class MediaProjectionCaptureService : Service() {
         const val EXTRA_HEIGHT = "height"
         const val EXTRA_FPS = "fps"
         const val EXTRA_BITRATE = "bitrate"
+        const val EXTRA_PREFERRED_CODEC = "preferred_codec"
 
         private const val CHANNEL_ID = "projection"
         private const val NOTIFICATION_ID = 1101
@@ -43,6 +44,7 @@ class MediaProjectionCaptureService : Service() {
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
     private var inputSurface: Surface? = null
     private var encoder: H264Encoder? = null
+    private var selectedCodec: VideoCodecProfile? = null
     private var totalEncodedBytes = 0L
     private var totalFrames = 0L
 
@@ -74,7 +76,9 @@ class MediaProjectionCaptureService : Service() {
             width = intent.getIntExtra(EXTRA_WIDTH, 1280),
             height = intent.getIntExtra(EXTRA_HEIGHT, 720),
             fps = intent.getIntExtra(EXTRA_FPS, 30),
-            bitrate = intent.getIntExtra(EXTRA_BITRATE, 4_000_000)
+            bitrate = intent.getIntExtra(EXTRA_BITRATE, 4_000_000),
+            preferredCodec = intent.getStringExtra(EXTRA_PREFERRED_CODEC)
+                ?.let { value -> VideoCodecProfile.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
         )
 
         startAsForeground()
@@ -89,25 +93,34 @@ class MediaProjectionCaptureService : Service() {
                 }
             }, mainExecutor)
 
+            selectedCodec = VideoCodecSelector.select(
+                width = config.width,
+                height = config.height,
+                fps = config.fps,
+                preferred = config.preferredCodec
+            )
+
+            Log.i(TAG, "Selected codec: ${selectedCodec!!.name} (${selectedCodec!!.mimeType}), hardwareAvailable=${VideoCodecSelector.hardwareAvailable(selectedCodec!!)}")
+
             encoder = H264Encoder(config, object : H264Encoder.Listener {
                 override fun onOutputFormat(format: MediaFormat) {
-                    Log.i(TAG, "Encoder output format: $format")
+                    Log.i(TAG, "Encoder output format: $format codec=${selectedCodec?.name}")
                 }
 
                 override fun onEncodedData(data: ByteBuffer, info: MediaCodec.BufferInfo) {
                     totalEncodedBytes += info.size
                     if ((info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
-                        Log.d(TAG, "Key frame: ${info.size} bytes")
+                        Log.d(TAG, "Key frame: ${info.size} bytes codec=${selectedCodec?.name}")
                     }
                     totalFrames++
-                    // V1.2 USB transport attaches here.
+                    // V1.2 transport wraps these access units with the selected codec ID.
                 }
 
                 override fun onEncoderError(error: Exception) {
                     Log.e(TAG, "Encoder error", error)
                     stopCapture()
                 }
-            })
+            }, selectedCodec!!)
 
             inputSurface = encoder!!.start()
             virtualDisplay = projection!!.createVirtualDisplay(
@@ -120,7 +133,7 @@ class MediaProjectionCaptureService : Service() {
                 null,
                 null
             )
-            Log.i(TAG, "Capture started: ${config.width}x${config.height}@${config.fps}, ${config.bitrate}bps")
+            Log.i(TAG, "Capture started: ${config.width}x${config.height}@${config.fps}, ${config.bitrate}bps, codec=${selectedCodec!!.name}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start capture", e)
             stopCapture()
@@ -149,6 +162,7 @@ class MediaProjectionCaptureService : Service() {
         inputSurface = null
         runCatching { projection?.stop() }
         projection = null
+        selectedCodec = null
         totalEncodedBytes = 0
         totalFrames = 0
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -169,7 +183,7 @@ class MediaProjectionCaptureService : Service() {
             Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setContentTitle("Android Desktop Bridge")
-                .setContentText("Screen capture active • H.264 encoder")
+                .setContentText("Screen capture active • adaptive video codec")
                 .setOngoing(true)
                 .build()
         } else {
@@ -177,7 +191,7 @@ class MediaProjectionCaptureService : Service() {
             Notification.Builder(this)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setContentTitle("Android Desktop Bridge")
-                .setContentText("Screen capture active • H.264 encoder")
+                .setContentText("Screen capture active • adaptive video codec")
                 .setOngoing(true)
                 .build()
         }
