@@ -6,7 +6,8 @@ data class ProjectionConfig(
     val height: Int = 720,
     val fps: Int = 30,
     val bitrate: Int = 4_000_000,
-    val iFrameIntervalSeconds: Int = 1
+    val iFrameIntervalSeconds: Int = 1,
+    val preferredCodec: VideoCodecProfile? = null
 ) {
     init {
         require(width > 0 && height > 0)
