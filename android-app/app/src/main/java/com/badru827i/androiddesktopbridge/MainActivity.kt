@@ -2,9 +2,14 @@ package com.badru827i.androiddesktopbridge
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
@@ -16,9 +21,38 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        securityAuth = SecurityAuthManager(this)
-        deviceProfile = DeviceProfiler.inspect(this)
-        setContentView(DesktopShellView(this))
+
+        try {
+            securityAuth = SecurityAuthManager(this)
+            deviceProfile = DeviceProfiler.inspect(this)
+            setContentView(DesktopShellView(this))
+        } catch (t: Throwable) {
+            showStartupError(t)
+        }
+    }
+
+    private fun showStartupError(error: Throwable) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(32, 32, 32, 32)
+            setBackgroundColor(Color.rgb(8, 11, 16))
+        }
+        val title = TextView(this).apply {
+            text = "Android Desktop Bridge\nStartup error"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+        val details = TextView(this).apply {
+            text = "\\n${error.javaClass.name}: ${error.message ?: "no message"}\\n\\nThis screen is only for debugging the V1 build."
+            textSize = 14f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+        }
+        root.addView(title)
+        root.addView(details)
+        setContentView(root)
     }
 
     fun requestScreenCapture() {
