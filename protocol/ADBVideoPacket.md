@@ -2,7 +2,7 @@
 
 ## Header
 
-All integers are little-endian.
+All integers are little-endian. The header remains fixed at 32 bytes.
 
 | Field | Size | Description |
 |---|---:|---|
@@ -16,13 +16,19 @@ All integers are little-endian.
 | Width | 2 | Video width |
 | Height | 2 | Video height |
 | FPS | 2 | Nominal frame rate |
-| Reserved | 2 | Must be zero |
+| Codec ID | 2 | `1` = H.264/AVC, `2` = H.265/HEVC, `3` = H.266/VVC |
+
+## Codec negotiation
+
+The Android sender discovers actual runtime encoder capabilities and chooses the highest supported codec in this order: H.266/VVC, H.265/HEVC, then H.264/AVC. The receiver must advertise which codec IDs it can decode before the stream starts. The sender must choose the highest codec supported by **both** sides. If no modern codec is available, H.264 is the compatibility fallback.
+
+The bridge must verify encoder capability for the requested resolution and frame rate before selecting a codec. H.266 is opportunistic only; the app must never assume that `video/vvc` exists on a particular phone.
 
 ## Payload
 
-For V1, payload is an H.264 access unit or codec configuration data emitted by Android `MediaCodec`.
+For V1, payload is an H.264, H.265, or H.266 access unit, or codec configuration data emitted by Android `MediaCodec`.
 
-A receiver must validate magic, version, header size and payload length before accepting a packet.
+A receiver must validate magic, version, header size, codec ID, and payload length before accepting a packet.
 
 ## Transport
 
