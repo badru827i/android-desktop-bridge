@@ -11,6 +11,8 @@ import android.media.MediaFormat
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.IBinder
 import android.util.Log
 import android.view.Surface
@@ -40,6 +42,7 @@ class MediaProjectionCaptureService : Service() {
         private const val TAG = "ADBridgeProjection"
     }
 
+    private val projectionCallbackHandler = Handler(Looper.getMainLooper())
     private var projection: MediaProjection? = null
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
     private var inputSurface: Surface? = null
@@ -91,7 +94,7 @@ class MediaProjectionCaptureService : Service() {
                     Log.i(TAG, "MediaProjection stopped by system/user")
                     stopCapture()
                 }
-            }, mainExecutor)
+            }, projectionCallbackHandler)
 
             selectedCodec = VideoCodecSelector.select(
                 width = config.width,
@@ -160,6 +163,7 @@ class MediaProjectionCaptureService : Service() {
         runCatching { encoder?.stop() }
         encoder = null
         inputSurface = null
+        runCatching { projection?.unregisterCallback(projectionCallback) }
         runCatching { projection?.stop() }
         projection = null
         selectedCodec = null
@@ -167,6 +171,13 @@ class MediaProjectionCaptureService : Service() {
         totalFrames = 0
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Log.i(TAG, "MediaProjection stopped by system/user")
+            stopCapture()
+        }
     }
 
     private fun createNotificationChannel() {
