@@ -1,74 +1,55 @@
 # Android Desktop Bridge
 
-Android Desktop Bridge ialah projek untuk membawa pengalaman desktop-style kepada telefon Android melalui monitor luaran.
+Android Desktop Bridge membawa pengalaman desktop-style ke telefon Android melalui monitor luaran, dengan telefon kekal sebagai CPU/GPU/RAM/storage/network/camera.
 
-## V1 — Lightweight Adaptive Desktop UI
-
-- Desktop shell Android yang ringan
-- Taskbar / dock minimal
-- Window manager ringkas
-- Mouse dan keyboard
-- Tiada blur/transparency/animasi berat
-- Sasaran utama 1280×720 (720p), 16:9
-- Resolusi dan UI scaling boleh menyesuaikan kemampuan telefon, bridge dan monitor
-- Profil Lite, Balanced dan Performance
-- Penggunaan hardware video encoder jika tersedia
-- Aplikasi Android kekal menggunakan aplikasi/perkakasan sebenar telefon
-
-## V1.1 — Real MediaProjection + H.264
-
-- User consent melalui Android MediaProjection
-- Foreground capture service bertipe `mediaProjection`
-- VirtualDisplay ke encoder Surface
-- H.264 hardware encoder melalui MediaCodec
-- 1280×720, 30 FPS dan 4 Mbps sebagai konfigurasi permulaan
-- Encoder capability detection
-- Callback untuk encoded access units dan output format
-- Clean shutdown bila projection dihentikan
-
-## Device-aware
-
-Sistem mengambil kira RAM, CPU/GPU, hardware encoder, USB capability, monitor dan beban sistem sebelum memilih konfigurasi desktop. Resolusi yang tidak disokong tidak akan dipaksa.
-
-## Permission & Consent
-
-Aplikasi meminta hanya permission yang diperlukan. MediaProjection memerlukan persetujuan pengguna untuk setiap sesi capture pada Android moden. Akses Accessibility, USB atau device-control juga memerlukan persetujuan melalui mekanisme Android yang sesuai. Tiada akses penuh secara senyap dan fungsi asas tidak memerlukan root.
-
-## Architecture
+## V1.3 architecture
 
 ```text
 Android Phone
-     |
-     | USB-C
-     v
-Desktop Bridge App
-     |
-     | MediaProjection
-     v
-VirtualDisplay
-     |
-     | Surface
-     v
-Hardware H.264 Encoder
-     |
-     | Encoded video
-     v
-USB Video Transport / Receiver  ← V1.2
-     |
-     | HDMI / DisplayPort
-     v
-Portable Monitor
+  -> MediaProjection -> Surface encoder
+  -> H.266 if available, else H.265, else H.264
+  -> ADBV packetizer
+  -> secure paired transport
+  -> receiver decoder/display
+  -> HDMI / DisplayPort -> portable monitor
+
+Keyboard / Mouse / Touch -> separate authenticated control channel
 ```
+
+## Included
+
+- Lightweight desktop shell: taskbar, launcher, windows, minimal effects.
+- Adaptive Lite/Balanced/Performance profiles based on device memory and runtime codec capability.
+- 720p-first design with 480p fallback and 30/60 FPS profiles.
+- Runtime codec fallback: H.266 -> H.265 -> H.264. H.266 is optional.
+- MediaProjection foreground capture with explicit Android user consent.
+- Fixed 32-byte ADBV video packet format with payload limits.
+- Pairing/session state with peer blocking and replay/sequence protection hooks.
+- Separate keyboard/mouse/touch protocol.
+- USB production architecture documented without pretending a passive cable can create unsupported video output.
+- Python receiver/parser and optional FFplay development display path.
+
+## USB reality
+
+A normal Android app cannot assume that every USB-C port supports DisplayPort Alt Mode or arbitrary custom USB gadget endpoints. The production design therefore uses either USB networking/tethering for development or a dedicated USB bridge/receiver that terminates the video stream and outputs HDMI/DP.
+
+## Security
+
+Use explicit pairing, authenticated sessions, encrypted production transport, short-lived session state, sequence/replay protection, packet/rate limits, and user-approved Android permissions. An unauthorized peer is rejected and its session can be terminated/blocked; the app does not control the Android OS or physically eject an attacker.
 
 ## Status
 
-🚧 V1.1 capture pipeline implemented. USB video transport / receiver is planned for V1.2.
+V1.3 software layers are being assembled in the repository. The Android capture/encoding code is present, but end-to-end physical USB-to-HDMI hardware, receiver firmware, and on-device validation still require the actual bridge hardware/test devices.
 
-## Prinsip
+## Build
+
+Android project: `android-app/` (compileSdk 35, minSdk 26). Python development receiver: `receiver/python/`.
+
+## Principles
 
 1. Ringan
 2. Responsif
-3. Adaptive mengikut spesifikasi telefon
+3. Adaptive ikut telefon/receiver/monitor
 4. Minimum visual effects
 5. Permission-first
-6. Tidak memerlukan root untuk fungsi asas
+6. No root required for basic capture
