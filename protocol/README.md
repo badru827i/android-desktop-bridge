@@ -1,5 +1,7 @@
 # Protocol V1.2
 
-The Android encoder produces H.264 access units. `ADBVideoPacket` wraps each unit with metadata so the transport can be USB bulk, TCP for development, or another byte stream.
+ADBV is transport-agnostic. Codec IDs: H264=1, H265=2, H266=3. Sender chooses the highest codec supported by both endpoints. H266 is optional.
 
-Next implementation step: replace the development TCP adapter with Android USB host/device transport and a receiver-side USB endpoint. The packet parser remains unchanged.
+Transports: localhost TCP for development, USB networking/tethering, or dedicated USB bridge hardware. See USB_ARCHITECTURE.md.
+
+Input/control is separate from video. See INPUT.md. Security rules are in SECURITY.md.
