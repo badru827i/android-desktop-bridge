@@ -21,11 +21,13 @@ object UsbCapabilityDetector {
 
     private fun profileFor(device: UsbDevice): UsbTransportProfile {
         val generation = if (Build.VERSION.SDK_INT >= 31) {
-            generationFromBcd(device.version)
+            generationFromVersionString(device.version)
         } else {
             UsbGeneration.UNKNOWN
         }
-        val superspeed = device.interfaces.any { it.endpointCount > 0 }
+        val superspeed = (0 until device.interfaceCount)
+            .map { device.getInterface(it) }
+            .any { usbInterface -> usbInterface.endpointCount > 0 }
         return UsbTransportProfile(
             generation = generation,
             role = UsbRole.HOST,
@@ -33,12 +35,13 @@ object UsbCapabilityDetector {
         )
     }
 
-    private fun generationFromBcd(version: Int): UsbGeneration {
-        val major = (version shr 8) and 0xff
-        val minor = version and 0xff
+    private fun generationFromVersionString(version: String): UsbGeneration {
+        val parts = version.split('.')
+        val major = parts.firstOrNull()?.toIntOrNull() ?: return UsbGeneration.UNKNOWN
+        val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
         return when {
             major >= 4 -> UsbGeneration.USB4
-            major >= 3 && minor >= 0x10 -> UsbGeneration.USB_3_1_GEN2
+            major >= 3 && minor >= 1 -> UsbGeneration.USB_3_1_GEN2
             major >= 3 -> UsbGeneration.USB_3_0
             major == 2 -> UsbGeneration.USB_2_0
             else -> UsbGeneration.UNKNOWN
