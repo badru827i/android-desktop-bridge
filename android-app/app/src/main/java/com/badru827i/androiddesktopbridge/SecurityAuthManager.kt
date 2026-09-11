@@ -10,13 +10,8 @@ import java.util.concurrent.Executor
 
 /**
  * User authentication gate for starting a trusted desktop session.
- *
- * Prefers the Android system biometric UI. Device credential (PIN/pattern/password)
- * is the fallback when the device does not have an eligible biometric or when
- * the user chooses the credential option exposed by the system prompt.
- *
- * The app never reads or stores the user's biometric template, PIN, pattern or
- * password. Android's system authentication service performs the verification.
+ * Android performs biometric/device-credential verification; the app never
+ * reads or stores biometric templates, PINs, patterns, or passwords.
  */
 class SecurityAuthManager(private val context: Context) {
     fun authenticate(
@@ -73,7 +68,7 @@ class SecurityAuthManager(private val context: Context) {
 
         val prompt = builder.build()
         prompt.authenticate(
-            null as CancellationSignal?,
+            CancellationSignal(),
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
