@@ -2,30 +2,39 @@
 
 Android Desktop Bridge ialah projek untuk membawa pengalaman desktop-style kepada telefon Android melalui monitor luaran.
 
-## Konsep
+## V1 — Lightweight Adaptive Desktop UI
 
-Telefon kekal sebagai peranti utama yang menjalankan aplikasi, CPU/GPU, RAM, storan dan sambungan rangkaian.
+- Desktop shell Android yang ringan
+- Taskbar / dock minimal
+- Window manager ringkas
+- Mouse dan keyboard
+- Tiada blur/transparency/animasi berat
+- Sasaran utama 1280×720 (720p), 16:9
+- Resolusi dan UI scaling boleh menyesuaikan kemampuan telefon, bridge dan monitor
+- Profil Lite, Balanced dan Performance
+- Penggunaan hardware video encoder jika tersedia
+- Aplikasi Android kekal menggunakan aplikasi/perkakasan sebenar telefon
 
-Monitor luaran digunakan sebagai paparan desktop, manakala sistem bridge mengurus paparan dan input antara telefon dengan monitor.
+## Device-aware
 
-## Sasaran V1
+Sistem mengambil kira RAM, CPU/GPU, hardware encoder, USB capability, monitor dan beban sistem sebelum memilih konfigurasi desktop. Resolusi yang tidak disokong tidak akan dipaksa.
 
-- Desktop-style UI yang ringan
-- Taskbar / dock
-- Sokongan mouse dan keyboard
-- Aplikasi dalam tetingkap
-- Fokus pada respons pantas dan latency rendah
-- Sasaran paparan 16:9, terutama 1080p
-- Mod Balanced, Performance dan Battery Saver
+## Permission & Consent
 
-## Architecture awal
+Aplikasi meminta hanya permission yang diperlukan. Akses seperti MediaProjection, Accessibility, USB atau device-control memerlukan persetujuan pengguna melalui mekanisme Android yang sesuai. Tiada akses penuh secara senyap dan V1 tidak memerlukan root untuk fungsi asas.
+
+## Architecture
 
 ```text
 Android Phone
      |
      | USB-C
      v
-Desktop Bridge / Transport
+Desktop Bridge App
+     |
+     | Screen Capture / Hardware Encode
+     v
+USB Video Transport / Receiver
      |
      | HDMI / DisplayPort
      v
@@ -36,6 +45,11 @@ Portable Monitor
 
 🚧 V1 sedang dibangunkan.
 
-## Nota teknikal
+## Prinsip
 
-Telefon yang tidak menyokong native USB-C DisplayPort Alt Mode memerlukan seni bina aktif untuk menghantar video ke monitor. Reka bentuk V1 akan mengkaji pendekatan USB video transport / receiver yang sesuai.
+1. Ringan
+2. Responsif
+3. Adaptive mengikut spesifikasi telefon
+4. Minimum visual effects
+5. Permission-first
+6. Tidak memerlukan root untuk fungsi asas
