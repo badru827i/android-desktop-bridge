@@ -15,13 +15,24 @@ Android Desktop Bridge ialah projek untuk membawa pengalaman desktop-style kepad
 - Penggunaan hardware video encoder jika tersedia
 - Aplikasi Android kekal menggunakan aplikasi/perkakasan sebenar telefon
 
+## V1.1 — Real MediaProjection + H.264
+
+- User consent melalui Android MediaProjection
+- Foreground capture service bertipe `mediaProjection`
+- VirtualDisplay ke encoder Surface
+- H.264 hardware encoder melalui MediaCodec
+- 1280×720, 30 FPS dan 4 Mbps sebagai konfigurasi permulaan
+- Encoder capability detection
+- Callback untuk encoded access units dan output format
+- Clean shutdown bila projection dihentikan
+
 ## Device-aware
 
 Sistem mengambil kira RAM, CPU/GPU, hardware encoder, USB capability, monitor dan beban sistem sebelum memilih konfigurasi desktop. Resolusi yang tidak disokong tidak akan dipaksa.
 
 ## Permission & Consent
 
-Aplikasi meminta hanya permission yang diperlukan. Akses seperti MediaProjection, Accessibility, USB atau device-control memerlukan persetujuan pengguna melalui mekanisme Android yang sesuai. Tiada akses penuh secara senyap dan V1 tidak memerlukan root untuk fungsi asas.
+Aplikasi meminta hanya permission yang diperlukan. MediaProjection memerlukan persetujuan pengguna untuk setiap sesi capture pada Android moden. Akses Accessibility, USB atau device-control juga memerlukan persetujuan melalui mekanisme Android yang sesuai. Tiada akses penuh secara senyap dan fungsi asas tidak memerlukan root.
 
 ## Architecture
 
@@ -32,9 +43,17 @@ Android Phone
      v
 Desktop Bridge App
      |
-     | Screen Capture / Hardware Encode
+     | MediaProjection
      v
-USB Video Transport / Receiver
+VirtualDisplay
+     |
+     | Surface
+     v
+Hardware H.264 Encoder
+     |
+     | Encoded video
+     v
+USB Video Transport / Receiver  ← V1.2
      |
      | HDMI / DisplayPort
      v
@@ -43,7 +62,7 @@ Portable Monitor
 
 ## Status
 
-🚧 V1 sedang dibangunkan.
+🚧 V1.1 capture pipeline implemented. USB video transport / receiver is planned for V1.2.
 
 ## Prinsip
 
