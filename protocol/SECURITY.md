@@ -2,7 +2,17 @@
 
 ## Goals
 
-The bridge is designed to protect screen content, input events, and control commands while keeping Android permissions explicit and user-controlled.
+The bridge protects screen content, input events, control commands, and paired-session credentials while keeping Android permissions explicit and user-controlled.
+
+## Local user authentication
+
+1. Starting a desktop session requires Android system authentication.
+2. If a supported biometric is available, the system biometric prompt can use fingerprint or face authentication according to the device's enrolled authenticators.
+3. Device credential is the fallback: the Android system may accept the user's configured PIN, pattern, or password.
+4. The app never receives or stores the fingerprint/face template, PIN, pattern, or password. Verification is performed by Android's system authentication service.
+5. Do not implement a custom password vault or biometric database inside the bridge.
+
+Android's `BiometricPrompt` supports biometric authenticators and `DEVICE_CREDENTIAL`; capability should be checked at runtime rather than assumed.
 
 ## Trust model
 
@@ -11,7 +21,13 @@ The bridge is designed to protect screen content, input events, and control comm
 3. Only a paired receiver may request a desktop session.
 4. A session has a fresh random session identifier and sequence state.
 5. Every transport packet is authenticated; production transports should use an encrypted channel such as TLS or an equivalent authenticated key-exchange design.
-6. Packets with invalid authentication, malformed headers, stale sequence numbers, or excessive payload sizes are rejected.
+6. Packets with invalid authentication, malformed headers, stale sequence numbers, unsupported codec IDs, or excessive payload sizes are rejected.
+
+## Unauthorized-session response
+
+The bridge must treat failed authentication, invalid pairing credentials, repeated replay/authentication failures, and unexpected control messages as a security event. It should immediately terminate the current desktop session, stop video/input/control transport, invalidate the session key, and require fresh user authentication and pairing before reconnecting.
+
+The app must not claim to identify or physically "kick out" an attacker from Android itself. The security boundary is the bridge session: an unauthorized peer is denied and disconnected from that session.
 
 ## Pairing
 
@@ -41,6 +57,7 @@ Recommended initial limits:
 - Maximum frame rate: 60 FPS
 - Maximum session queue: implementation-defined bounded queue
 - Reject unsupported codec IDs before allocation/decoder setup
+- Use bounded authentication failure counters and short lockout/backoff windows
 
 ## USB security
 
