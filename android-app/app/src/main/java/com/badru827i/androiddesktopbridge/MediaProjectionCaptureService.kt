@@ -19,12 +19,7 @@ import android.view.Surface
 import androidx.core.app.ServiceCompat
 import java.nio.ByteBuffer
 
-/**
- * MediaProjection -> VirtualDisplay -> runtime-selected video encoder.
- *
- * Codec selection is capability-driven; the selected codec is exposed to the
- * transport layer so ADBV packets can carry the correct codec ID.
- */
+/** MediaProjection capture service for the desktop bridge. */
 class MediaProjectionCaptureService : Service() {
     companion object {
         const val ACTION_START = "com.badru827i.androiddesktopbridge.action.START_CAPTURE"
@@ -43,6 +38,13 @@ class MediaProjectionCaptureService : Service() {
     }
 
     private val projectionCallbackHandler = Handler(Looper.getMainLooper())
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Log.i(TAG, "MediaProjection stopped by system/user")
+            stopCapture()
+        }
+    }
+
     private var projection: MediaProjection? = null
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
     private var inputSurface: Surface? = null
@@ -89,12 +91,7 @@ class MediaProjectionCaptureService : Service() {
         try {
             val manager = getSystemService(MediaProjectionManager::class.java)
             projection = manager.getMediaProjection(resultCode, resultData)
-            projection?.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() {
-                    Log.i(TAG, "MediaProjection stopped by system/user")
-                    stopCapture()
-                }
-            }, projectionCallbackHandler)
+            projection?.registerCallback(projectionCallback, projectionCallbackHandler)
 
             selectedCodec = VideoCodecSelector.select(
                 width = config.width,
@@ -116,7 +113,6 @@ class MediaProjectionCaptureService : Service() {
                         Log.d(TAG, "Key frame: ${info.size} bytes codec=${selectedCodec?.name}")
                     }
                     totalFrames++
-                    // V1.2 transport wraps these access units with the selected codec ID.
                 }
 
                 override fun onEncoderError(error: Exception) {
@@ -171,13 +167,6 @@ class MediaProjectionCaptureService : Service() {
         totalFrames = 0
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
-    }
-
-    private val projectionCallback = object : MediaProjection.Callback() {
-        override fun onStop() {
-            Log.i(TAG, "MediaProjection stopped by system/user")
-            stopCapture()
-        }
     }
 
     private fun createNotificationChannel() {
