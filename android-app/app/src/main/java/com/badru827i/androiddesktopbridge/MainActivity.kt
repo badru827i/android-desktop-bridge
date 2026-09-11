@@ -12,15 +12,31 @@ class MainActivity : Activity() {
         private const val REQUEST_MEDIA_PROJECTION = 7201
     }
 
+    private lateinit var securityAuth: SecurityAuthManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        securityAuth = SecurityAuthManager(this)
         setContentView(DesktopShellView(this))
     }
 
-    /** Starts a fresh MediaProjection consent flow for every capture session. */
+    /**
+     * Authenticate the local user before requesting screen capture.
+     * Android's system biometric UI may use fingerprint/face and can fall back
+     * to the device PIN, pattern, or password. The app never sees the secret.
+     */
     fun requestScreenCapture() {
+        securityAuth.authenticate(
+            onSuccess = { requestMediaProjectionConsent() },
+            onFailure = { message ->
+                Toast.makeText(this, "Security check failed: $message", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun requestMediaProjectionConsent() {
         val manager = getSystemService(MediaProjectionManager::class.java)
         startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION)
     }
@@ -50,6 +66,6 @@ class MainActivity : Activity() {
         } else {
             startService(serviceIntent)
         }
-        Toast.makeText(this, "MediaProjection started • 720p H.264", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Secure MediaProjection started • 720p", Toast.LENGTH_SHORT).show()
     }
 }
