@@ -12,7 +12,7 @@ import kotlin.math.max
 /**
  * Lightweight V1 desktop shell prototype.
  * It intentionally uses a single custom View: no heavy blur, no animations,
- * and no external UI framework. Real Android apps/USB transport come later.
+ * and no external UI framework.
  */
 class DesktopShellView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -32,7 +32,6 @@ class DesktopShellView(context: Context) : View(context) {
         val h = height.toFloat()
         val barH = max(64f, h * 0.09f)
 
-        // Simple desktop background.
         canvas.drawColor(android.graphics.Color.rgb(8, 11, 16))
         paint.color = android.graphics.Color.rgb(15, 22, 31)
         canvas.drawRect(0f, 0f, w, h - barH, paint)
@@ -42,18 +41,15 @@ class DesktopShellView(context: Context) : View(context) {
         paint.color = android.graphics.Color.rgb(12, 18, 26)
         canvas.drawCircle(w * 0.18f, h * 0.40f, h * 0.18f, paint)
 
-        // Desktop label.
         paint.color = android.graphics.Color.WHITE
         paint.textSize = max(18f, h * 0.035f)
         canvas.drawText("Android Desktop Bridge", 28f, 42f, paint)
         paint.color = android.graphics.Color.LTGRAY
         paint.textSize = max(12f, h * 0.024f)
-        canvas.drawText("V1 • 720p adaptive shell", 28f, 68f, paint)
+        canvas.drawText("V1.1 • 720p MediaProjection pipeline", 28f, 68f, paint)
 
-        // Optional demo window.
         if (windowOpen) drawDemoWindow(canvas, w, h, barH)
 
-        // Taskbar.
         taskbar.set(0f, h - barH, w, h)
         paint.color = android.graphics.Color.rgb(10, 14, 20)
         canvas.drawRect(taskbar, paint)
@@ -67,7 +63,7 @@ class DesktopShellView(context: Context) : View(context) {
 
         paint.color = android.graphics.Color.LTGRAY
         paint.textSize = max(12f, barH * 0.23f)
-        canvas.drawText("USB: standby", w - 150f, h - barH / 2f + 5f, paint)
+        canvas.drawText("Capture: ready", w - 155f, h - barH / 2f + 5f, paint)
 
         if (launcherOpen) drawLauncher(canvas, w, h, barH)
     }
@@ -87,7 +83,7 @@ class DesktopShellView(context: Context) : View(context) {
         paint.color = android.graphics.Color.LTGRAY
         paint.textSize = 14f
         canvas.drawText("Window manager prototype", left + 22f, top + 88f, paint)
-        canvas.drawText("Tap Apps to open the launcher.", left + 22f, top + 116f, paint)
+        canvas.drawText("MediaProjection is available from Apps.", left + 22f, top + 116f, paint)
     }
 
     private fun drawLauncher(canvas: Canvas, w: Float, h: Float, barH: Float) {
@@ -102,7 +98,8 @@ class DesktopShellView(context: Context) : View(context) {
         canvas.drawText("Chrome", panel.left + 24f, panel.top + 84f, paint)
         canvas.drawText("Camera", panel.left + 24f, panel.top + 122f, paint)
         canvas.drawText("Settings", panel.left + 24f, panel.top + 160f, paint)
-        canvas.drawText("Desktop Bridge", panel.left + 24f, panel.top + 198f, paint)
+        paint.color = android.graphics.Color.WHITE
+        canvas.drawText("Start screen capture", panel.left + 24f, panel.top + 198f, paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -117,12 +114,29 @@ class DesktopShellView(context: Context) : View(context) {
             return true
         }
 
-        if (launcherOpen && y in 110f..(height - barH - 20f) && x < 430f) {
-            windowOpen = true
-            launcherOpen = false
-            Toast.makeText(context, "Demo window opened", Toast.LENGTH_SHORT).show()
-            invalidate()
-            return true
+        if (launcherOpen && x < 430f) {
+            val panelTop = 70f
+            val captureRowTop = panelTop + 165f
+            val captureRowBottom = panelTop + 225f
+            if (y in captureRowTop..captureRowBottom) {
+                launcherOpen = false
+                val activity = context as? MainActivity
+                if (activity != null) {
+                    activity.requestScreenCapture()
+                } else {
+                    Toast.makeText(context, "Open screen capture from MainActivity", Toast.LENGTH_SHORT).show()
+                }
+                invalidate()
+                return true
+            }
+
+            if (y in 95f..(height - barH - 20f)) {
+                windowOpen = true
+                launcherOpen = false
+                Toast.makeText(context, "Demo window opened", Toast.LENGTH_SHORT).show()
+                invalidate()
+                return true
+            }
         }
         return true
     }
